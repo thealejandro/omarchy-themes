@@ -1,0 +1,103 @@
+#!/bin/bash
+# Omarchy theme-set hook: recolors the Tide prompt (fish) with the current theme's colors.
+#
+# Install:  omarchy hook install theme-set 30-tide-colors
+# Restore:  ~/.config/omarchy/hooks/theme-set.d/30-tide-colors --restore
+#
+# Built to survive Omarchy updates:
+# - Only public interfaces: `omarchy theme dir <theme>` and the colors.toml keys.
+# - Without fish, Tide, python3 or a color key it does nothing or uses a fallback.
+# - It never fails: an error here can never break `omarchy theme set`.
+# - It only touches the "interface" segments (os, pwd, git, time, status...). Language
+#   segments (node, python, rust...) keep their brand colors.
+# - A theme may ship a `tide.fish` next to colors.toml to tweak anything; it runs last.
+# - On its first run it saves your original colors to ~/.local/state/omarchy-tide/original.fish.
+
+set -u
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-tide"
+ORIGINAL="$STATE_DIR/original.fish"
+LOG="$STATE_DIR/hook.log"
+
+main() {
+  command -v fish >/dev/null || return 0
+  fish -c 'functions -q tide' 2>/dev/null || return 0
+  mkdir -p "$STATE_DIR"
+
+  if [[ ${1:-} == "--restore" ]]; then
+    [[ -f $ORIGINAL ]] && fish "$ORIGINAL" && echo "Tide colors restored."
+    return 0
+  fi
+
+  if [[ ! -f $ORIGINAL ]]; then
+    # shellcheck disable=SC2016 # fish code, expanded by fish
+    fish -c 'for v in (set -U --names | string match -r "^tide_.*color.*")
+      echo "set -U $v "(string escape -- $$v)
+    end' >"$ORIGINAL" 2>/dev/null
+  fi
+
+  local theme="${1:-}" dir=""
+  [[ -n $theme ]] && dir=$(omarchy theme dir "$theme" 2>/dev/null)
+  local colors="$dir/colors.toml"
+  [[ -f $colors ]] || colors="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml"
+  [[ -f $colors ]] || return 0
+  command -v python3 >/dev/null || return 0
+
+  local script
+  script=$(python3 -I - "$colors" <<'PY'
+import sys, tomllib
+c = tomllib.load(open(sys.argv[1], "rb"))
+def h(k, *fb):
+    for key in (k, *fb):
+        v = c.get(key)
+        if isinstance(v, str) and v.startswith("#") and len(v) >= 7:
+            return v[1:7].upper()
+    return None
+def lum(x):
+    r, g, b = (int(x[i:i+2], 16) / 255 for i in (0, 2, 4))
+    f = lambda u: u / 12.92 if u <= 0.03928 else ((u + 0.055) / 1.055) ** 2.4
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+bg = h("background") or "1E1E1E"
+def on(x):  # readable text on a colored background
+    return "000000" if lum(x) > 0.35 else "FFFFFF"
+dark = c.get("mode", "dark") != "light"
+surface = h("lighter_background", "selection") or bg
+accent = h("accent", "blue") or "1793D1"
+pal = {
+  "os_bg_color": surface, "os_color": accent,
+  "pwd_bg_color": accent, "pwd_color_anchors": on(accent), "pwd_color_dirs": on(accent),
+  "pwd_color_truncated_dirs": on(accent),
+  # when the accent is already green, git uses cyan so it doesn't blend with the folder
+  "git_bg_color": (h("cyan") if h("green") == accent else h("green")) or "4E9A06", "git_bg_color_unstable": h("yellow") or "C4A000",
+  "git_bg_color_urgent": h("red") or "CC0000",
+  "time_bg_color": h("light_foreground", "foreground") if not dark else (h("foreground") or "D3D7CF"),
+  "status_bg_color": surface, "status_color": h("green") or "4E9A06",
+  "status_bg_color_failure": h("red") or "CC0000",
+  "cmd_duration_bg_color": h("yellow") or "C4A000",
+  "context_bg_color": surface, "context_color_default": h("light_foreground", "foreground"),
+  "context_color_ssh": h("orange", "yellow"), "context_color_root": h("red"),
+  "jobs_bg_color": surface, "jobs_color": h("green"),
+  "character_color": h("green", "accent"), "character_color_failure": h("red"),
+  "prompt_color_frame_and_connection": h("muted", "dark_foreground"),
+  "prompt_color_separator_same_color": h("dark_foreground", "muted"),
+  "vi_mode_bg_color_default": h("dark_foreground", "muted"), "vi_mode_bg_color_insert": h("cyan"),
+  "vi_mode_bg_color_replace": h("green"), "vi_mode_bg_color_visual": h("orange", "yellow"),
+}
+pal["time_color"] = on(pal["time_bg_color"])
+pal["status_color_failure"] = on(pal["status_bg_color_failure"])
+pal["cmd_duration_color"] = on(pal["cmd_duration_bg_color"])
+for k in ("branch", "conflicted", "dirty", "operation", "staged", "stash", "untracked", "upstream"):
+    pal[f"git_color_{k}"] = on(pal["git_bg_color"])
+for k, v in pal.items():
+    if v:
+        print(f"set -U tide_{k} {v}")
+PY
+  ) || return 0
+  [[ -n $script ]] || return 0
+  fish -c "$script" 2>>"$LOG"
+
+  [[ -n $dir && -f $dir/tide.fish ]] && fish "$dir/tide.fish" 2>>"$LOG"
+  return 0
+}
+
+main "$@" || true
+exit 0

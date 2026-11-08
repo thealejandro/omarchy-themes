@@ -1,0 +1,61 @@
+#!/bin/bash
+# Omarchy theme-set hook: applies the window shape (corner radius) a theme declares.
+#
+# Install:  omarchy hook install theme-set 40-theme-shape
+#
+# Why: `omarchy theme install <repo>` drops every .lua file from a cloned theme, so its
+# hyprland.lua (where `rounding` lives) never arrives. This hook reads the theme's
+# `shape.toml`, which is kept, and appends the shape to the hyprland.lua Omarchy just
+# generated in ~/.local/state/omarchy/current/theme/. Omarchy reloads Hyprland after hooks.
+#
+# shape.toml (every key is optional):
+#   rounding = 12        # corner radius in px (0-40)
+#   rounding_power = 4   # 2 = circular, 4 = macOS-like squircle (1-10)
+#
+# Built to survive Omarchy updates:
+# - Only public interfaces: `omarchy theme dir` and the active theme in current/theme.
+# - If the theme already sets `rounding` in its own hyprland.lua (local themes), it does nothing.
+# - Numbers are validated before any Lua is written; it never fails.
+# - The file is regenerated on every theme change, so other themes never inherit the shape.
+
+set -u
+CURRENT="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme"
+MARK="-- omarchy-theme-shape"
+
+main() {
+  local theme="${1:-}" dir="" shape lua
+  [[ -n $theme ]] && dir=$(omarchy theme dir "$theme" 2>/dev/null)
+  shape="$dir/shape.toml"
+  [[ -f $shape ]] || shape="$CURRENT/shape.toml"
+  [[ -f $shape ]] || return 0
+  lua="$CURRENT/hyprland.lua"
+  [[ -f $lua ]] || return 0
+  grep -q -- "$MARK" "$lua" && return 0
+  grep -qE '^[^-]*rounding' "$lua" && return 0
+  command -v python3 >/dev/null || return 0
+
+  local block
+  block=$(python3 -I - "$shape" <<'PY'
+import sys, tomllib
+try:
+    s = tomllib.load(open(sys.argv[1], "rb"))
+except Exception:
+    sys.exit(0)
+out = []
+r = s.get("rounding")
+if isinstance(r, int) and not isinstance(r, bool) and 0 <= r <= 40:
+    out.append(f"rounding = {r}")
+p = s.get("rounding_power")
+if isinstance(p, (int, float)) and not isinstance(p, bool) and 1 <= p <= 10:
+    out.append(f"rounding_power = {float(p):g}")
+if out:
+    print("hl.config({ decoration = { " + ", ".join(out) + " } })")
+PY
+  ) || return 0
+  [[ -n $block ]] || return 0
+  printf '\n%s\n%s\n' "$MARK" "$block" >>"$lua"
+  return 0
+}
+
+main "$@" || true
+exit 0
