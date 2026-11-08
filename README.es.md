@@ -1,3 +1,5 @@
+<a href="https://thealejandro.dev"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/marca/logotipo.svg"><img alt="thealejandro" src="docs/marca/logotipo-mono-oscuro.svg" height="32"></picture></a>
+
 # omarchy-themes
 
 [English](README.md)
@@ -62,3 +64,5 @@ Quítalos (y recupera tus colores de Tide) con `omarchy-themes/install.sh --unin
   (`omarchy font set "FiraCode Nerd Font"`). Alacritty no tiene ligaduras.
 
 Sin relación con Apple ni Microsoft. [MIT](LICENSE)
+
+Hecho por [thealejandro](https://thealejandro.dev)

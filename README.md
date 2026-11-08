@@ -1,3 +1,5 @@
+<a href="https://thealejandro.dev"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/marca/logotipo.svg"><img alt="thealejandro" src="docs/marca/logotipo-mono-oscuro.svg" height="32"></picture></a>
+
 # omarchy-themes
 
 [Español](README.es.md)
@@ -61,3 +63,5 @@ Remove them (and restore your Tide colors) with `omarchy-themes/install.sh --uni
   (`omarchy font set "FiraCode Nerd Font"`). Alacritty has no ligatures.
 
 Not affiliated with Apple or Microsoft. [MIT](LICENSE)
+
+Made by [thealejandro](https://thealejandro.dev)
